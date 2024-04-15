@@ -3,6 +3,7 @@ from OpenGL.GL import *
 import numpy as np
 import sympy as sym
 import scipy.integrate
+from numpy import sqrt
 
 n = 800
 r = 40
@@ -14,9 +15,9 @@ movingincrement = .05
 global pos
 global eyes
 global perpv
-pos = np.array([0,0]).T
-eyes = np.array([1,0]).T
-perpv = np.array([0,-1]).T
+pos = np.array([0,1]).T
+eyes = np.array([0,1]).T
+perpv = np.array([1,0]).T
 
 def regiontest(x,y):
     if np.abs(x)>1 or np.abs(y)>1:
@@ -27,10 +28,10 @@ def whatmelook():
     calcs = []
     for theta in thetas:
         vec = np.cos(theta)*eyes+np.sin(theta)*perpv
-        integrator = scipy.integrate.LSODA(fun=model, t0=0, y0=[*pos,*vec],t_bound=3,max_step=.05,jac=npJac)
+        integrator = scipy.integrate.LSODA(fun=model, t0=0, y0=[*pos,*vec],t_bound=5,max_step=.05,jac=npJac)
         while integrator.status == "running":
             integrator.step()
-            if not regiontest(integrator.y[0],integrator.y[1]):
+            if not regioncheck(integrator.y[0],integrator.y[1]):
                 calcs.append((integrator.t,1))
                 break
         if not integrator.status == "running":
@@ -93,6 +94,7 @@ if __name__=="__main__":
     g22str = input("g_22: ")
 
     x1, x2, a, b = sym.symbols("x1 x2 a b")
+    regioncheck = sym.lambdify([x1,x2],sym.sympify(input("Containment condition: ")))
     x = [x1,x2]
     g = sym.Matrix([[g11str, g12str],[g21str,g22str]])
     gup = g.inv()
@@ -101,7 +103,7 @@ if __name__=="__main__":
     
     def dJacsgen(i,j):
         indies = [x1, x2, a, b]
-        return sym.diff(-(G[0][0][i]*a^2+2*G[0][1][i]*a*b+G[1][1][i]*b^2),indies[j])
+        return sym.diff(-(G[0][0][i]*a**2+2*G[0][1][i]*a*b+G[1][1][i]*b**2),indies[j])
     Jac = sym.Matrix([[0,0,1,0],[0,0,0,1],[0,0,0,0],[0,0,0,0]])
     dJacs = sym.Matrix(2,4,dJacsgen)
     Jac[2:4,:]=dJacs
@@ -113,11 +115,10 @@ if __name__=="__main__":
     npJach = sym.lambdify([x1,x2,a,b],Jac,"numpy")
     def npJac(t,y):
         return npJach(*y)
-    npmod2 = sym.lambdify([x1,x2,a,b],-(G[0][0][0]*a^2+2*G[0][1][0]*a*b+G[1][1][0]*b^2),"numpy")
-    npmod3 = sym.lambdify([x1,x2,a,b],-(G[0][0][1]*a^2+2*G[0][1][1]*a*b+G[1][1][1]*b^2),"numpy")
+    npmod2 = sym.lambdify([x1,x2,a,b],-(G[0][0][0]*a**2+2*G[0][1][0]*a*b+G[1][1][0]*b**2),"numpy")
+    npmod3 = sym.lambdify([x1,x2,a,b],-(G[0][0][1]*a**2+2*G[0][1][1]*a*b+G[1][1][1]*b**2),"numpy")
     def gp(v,w):
         return v.T@npg(*pos)@w
-    
     perpv = perpv-gp(perpv,eyes)/gp(eyes,eyes)*eyes
     perpv = perpv/np.sqrt(gp(perpv,perpv))
 
