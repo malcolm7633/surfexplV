@@ -49,14 +49,40 @@ def movin(key,x,y):
     global pos
     global eyes
     global perpv
+    vec = np.array([0,0]).T
     if key == b'w':
-        pos = pos + movingincrement*eyes
+        vec = eyes
+        integrator = scipy.integrate.LSODA(fun=model, t0=0, y0=[*pos,*vec],t_bound=movingincrement,max_step=.05,jac=npJac)
+        while integrator.status == "running":
+            integrator.step()
+        pos = np.array([integrator.y[0],integrator.y[1]]).T
+        eyes = np.array([integrator.y[2],integrator.y[3]]).T
+        perpv = perpv-gp(perpv,eyes)/gp(eyes,eyes)*eyes
     elif key == b's':
-        pos = pos - movingincrement*eyes
+        vec = -eyes
+        integrator = scipy.integrate.LSODA(fun=model, t0=0, y0=[*pos,*vec],t_bound=movingincrement,max_step=.05,jac=npJac)
+        while integrator.status == "running":
+            integrator.step()
+        pos = np.array([integrator.y[0],integrator.y[1]]).T
+        eyes = -np.array([integrator.y[2],integrator.y[3]]).T
+        perpv = perpv-gp(perpv,eyes)/gp(eyes,eyes)*eyes
     elif key == b'd':
-        pos = pos + movingincrement*perpv
+        vec = perpv
+        integrator = scipy.integrate.LSODA(fun=model, t0=0, y0=[*pos,*vec],t_bound=movingincrement,max_step=.05,jac=npJac)
+        while integrator.status == "running":
+            integrator.step()
+        pos = np.array([integrator.y[0],integrator.y[1]]).T
+        perpv = np.array([integrator.y[2],integrator.y[3]]).T
+        eyes = eyes-gp(perpv,eyes)/gp(perpv,perpv)*perpv
     elif key == b'a':
-        pos = pos - movingincrement*perpv
+        vec = -perpv
+        integrator = scipy.integrate.LSODA(fun=model, t0=0, y0=[*pos,*vec],t_bound=movingincrement,max_step=.05,jac=npJac)
+        while integrator.status == "running":
+            integrator.step()
+        pos = np.array([integrator.y[0],integrator.y[1]]).T
+        perpv = -np.array([integrator.y[2],integrator.y[3]]).T
+        eyes = eyes-gp(perpv,eyes)/gp(perpv,perpv)*perpv
+
     eyes = eyes/np.sqrt(gp(eyes,eyes))
     perpv = perpv/np.sqrt(gp(perpv,perpv))
 
