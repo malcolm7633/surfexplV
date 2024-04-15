@@ -47,6 +47,8 @@ def turning(key,x,y):
         perpv = perpv/np.sqrt(gp(perpv,perpv))
 def movin(key,x,y):
     global pos
+    global eyes
+    global perpv
     if key == b'w':
         pos = pos + movingincrement*eyes
     elif key == b's':
@@ -55,6 +57,8 @@ def movin(key,x,y):
         pos = pos + movingincrement*perpv
     elif key == b'a':
         pos = pos - movingincrement*perpv
+    eyes = eyes/np.sqrt(gp(eyes,eyes))
+    perpv = perpv/np.sqrt(gp(perpv,perpv))
 
 def render():
     calcs = whatmelook()
