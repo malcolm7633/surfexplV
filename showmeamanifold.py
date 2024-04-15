@@ -15,15 +15,10 @@ movingincrement = .05
 global pos
 global eyes
 global perpv
-pos = np.array([0,1]).T
+pos = np.array([0,0]).T
 eyes = np.array([0,1]).T
 perpv = np.array([1,0]).T
 
-def regiontest(x,y):
-    if np.abs(x)>1 or np.abs(y)>1:
-        return False
-    else:
-        return True
 def whatmelook():
     calcs = []
     for theta in thetas:
