@@ -21,13 +21,15 @@ perpv = np.array([1,0]).T
 
 def whatmelook():
     calcs = []
+    steptest = lambda y:(1 if regioncheck(y[0],y[1]) else -1)
     for theta in thetas:
         vec = np.cos(theta)*eyes+np.sin(theta)*perpv
         integrator = scipy.integrate.LSODA(fun=model, t0=0, y0=[*pos,*vec],t_bound=5,max_step=.05,jac=npJac)
         while integrator.status == "running":
             integrator.step()
             if not regioncheck(integrator.y[0],integrator.y[1]):
-                calcs.append((integrator.t,1))
+                interp = integrator.dense_output()
+                calcs.append((scipy.optimize.bisect(lambda t: steptest(interp(t)),interp.t_min,interp.t_max,xtol=1e-7),1))
                 break
         if not integrator.status == "running":
             calcs.append((0,0))
