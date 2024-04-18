@@ -93,7 +93,7 @@ def render():
     vertices = np.array([])
     for i in range(r):
         if calcs[i][1] == 1:
-            j = 2*wallh/fov/calcs[i][0]
+            j = 2*wallh/fov/calcs[i][0]/coss[i]
             vertices = np.append(vertices,[xbounds[i],j,xbounds[i],-j,xbounds[i+1],j,xbounds[i+1],j,xbounds[i],-j,xbounds[i+1],-j])
     vertices = vertices.astype(np.float32)
     glBufferData(GL_ARRAY_BUFFER,vertices,GL_STREAM_DRAW)
@@ -117,7 +117,7 @@ if __name__=="__main__":
     
     g11str = input("g_11: ")
     g12str = input("g_12: ")
-    g21str = input("g_21: ")
+    g21str = g12str
     g22str = input("g_22: ")
 
     x1, x2, a, b = sym.symbols("x1 x2 a b")
@@ -150,6 +150,7 @@ if __name__=="__main__":
     perpv = perpv/np.sqrt(gp(perpv,perpv))
 
     thetas = np.array([np.arctan(fov*(k/(r-1)-1/2)) for k in range(r)])
+    coss = np.cos(thetas)
     xbounds = np.array([2*(m-1/2)/(r-1)-1 for m in range(r+1)])
 
     glutInit()
