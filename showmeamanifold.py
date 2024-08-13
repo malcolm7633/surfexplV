@@ -97,6 +97,8 @@ def whatmelook():
         for p in range(len(pos)):
             vec = np.cos(theta)*eyes[p]+np.sin(theta)*perpv[p]
             psimin.append([*pos[p],vec])
+        inmyself = True
+        ranintosometingelse = False
         integrator = scipy.integrate.LSODA(fun=patches[psimin[0][0]].model, t0=0, y0=[*psimin[0][1],*psimin[0][2]],t_bound=settings["tbound"],max_step=.05,jac=patches[psimin[0][0]].npJac)
         while len(psimin) > 0 and integrator.status == "running":
             integrator.step()
@@ -106,18 +108,52 @@ def whatmelook():
                 if len(psimin)>0:
                     integrator = scipy.integrate.LSODA(fun=patches[psimin[0][0]].model, t0=integrator.t_old, y0=[*psimin[0][1],*psimin[0][2]],t_bound=settings["tbound"],max_step=.05,jac=patches[psimin[0][0]].npJac)
                 continue
-            psimin = [psimin[0]]
+            psimin = [[psimin[0][0],integrator.y[0:2],integrator.y[2:]]]
             for p in range(patchnum):
                 if not p == pin:
                     if patches[pin].regionchecks[p]((integrator.y[0],integrator.y[1])) == 1:
                         psimin.append([p,patches[pin].cocs[p]((integrator.y[0],integrator.y[1]))[0],patches[pin].cobs[p]((integrator.y[0],integrator.y[1]),np.array([integrator.y[2],integrator.y[3]]).T)])
+            if inmyself:
+                for po in pos:
+                    for p in psimin:
+                        if p[0] == po[0]:
+                            if patches[po[0]].gp(p[1]-po[1],p[1]-po[1],po[1]) > 0.1**2:
+                                inmyself = False
+                                break
+                    if not inmyself:
+                        break
+            elif not ranintosometingelse:
+                for po in pos:
+                    for p in psimin:
+                        if p[0] == po[0]:
+                            if patches[po[0]].gp(p[1]-po[1],p[1]-po[1],po[1]) < 0.1**2:
+                                if not psimin[0][0] == p[0]:
+                                    interp = integrator.dense_output()
+                                    y0 = interp(interp.t_min)
+                                    integrator = scipy.integrate.LSODA(fun=patches[p[0]].model,t0=interp.t_min,y0=[*patches[psimin[0][0]].cocs[p[0]]((y0[0],y0[1]))[0],*patches[psimin[0][0]].cobs[p[0]]((y0[0],y0[1]),np.array([y0[2],y0[3]]).T)],t_bound=settings["tbound"],first_step=.05,jac=patches[p[0]].npJac)
+                                    integrator.step()
+                                interp = integrator.dense_output()
+                                def dense(t):
+                                    return patches[po[0]].gp(interp(t)[0:2]-po[1],interp(t)[0:2]-po[1],po[1]) - 0.1**2
+                                calcs.append((scipy.optimize.bisect(dense,interp.t_min,interp.t_max,xtol=1e-7),2))
+                                ranintosometingelse = True
+                                break
+                    if ranintosometingelse:
+                        break
+
         if not integrator.status == "running":
-            calcs.append((0,0))
+            if ranintosometingelse:
+                calcs = calcs[:-1]+[(0,0),calcs[-1]]
+            else:
+                calcs.append((0,0))
         else:
             interp = integrator.dense_output()
             def dense(t):
                 return patches[pin].regionchecks[pin](interp(t))
-            calcs.append((scipy.optimize.bisect(dense,interp.t_min,interp.t_max,xtol=1e-7),1))
+            if ranintosometingelse:
+                calcs = calcs[:-1]+[(scipy.optimize.bisect(dense,interp.t_min,interp.t_max,xtol=1e-7),1),calcs[-1]]
+            else:
+                calcs.append((scipy.optimize.bisect(dense,interp.t_min,interp.t_max,xtol=1e-7),1))
     return calcs
 def turning(key,x,y):
     if key == GLUT_KEY_RIGHT:
@@ -246,26 +282,32 @@ def movin(key,x,y):
 def render():
     calcs = whatmelook()
     vertices = np.array([])
-    for i in range(settings["r"]):
-        if calcs[i][1] == 1:
-            j = settings["wallh"]/settings["fov"]/calcs[i][0]*settings["width"]/settings["height"]/coss[i]
+    colors = np.array([])
+    i = 0
+    k = 0
+    while k < len(calcs):
+        if calcs[k][1] == 1:
+            j = settings["wallh"]/settings["fov"]/calcs[k][0]*settings["width"]/settings["height"]/coss[i]
             vertices = np.append(vertices,[xbounds[i],j,xbounds[i],-j,xbounds[i+1],j,xbounds[i+1],j,xbounds[i],-j,xbounds[i+1],-j])
+            colors = np.append(colors,[0.5,0.25,0.]*6)
+        elif calcs[k][1] == 2:
+            i -= 1
+            j = settings["wallh"]/settings["fov"]/calcs[k][0]*settings["width"]/settings["height"]/coss[i]
+            vertices = np.append(vertices,[xbounds[i],0,xbounds[i],-j,xbounds[i+1],0,xbounds[i+1],0,xbounds[i],-j,xbounds[i+1],-j])
+            colors = np.append(colors,[1.,0.,0.]*6)
+        i += 1
+        k += 1
+    vertices = np.append([-1.,0.,1.,0.,-1.,-1.,1.,-1.,1.,0.,-1.,-1.],vertices)
+    colors = np.append([0.,1.,0,0,1.,0.]*3,colors)
     vertices = vertices.astype(np.float32)
+    colors = colors.astype(np.float32)
+    glBindBuffer(GL_ARRAY_BUFFER,vbos[0])
     glBufferData(GL_ARRAY_BUFFER,vertices,GL_STREAM_DRAW)
+    glBindBuffer(GL_ARRAY_BUFFER,vbos[1])
+    glBufferData(GL_ARRAY_BUFFER,colors,GL_STREAM_DRAW)
     glClear(GL_COLOR_BUFFER_BIT,GL_DEPTH_BUFFER_BIT)
     
-    glBindBuffer(GL_ARRAY_BUFFER,vbo2)
-    glUseProgram(shaderProgram2)
-    glBegin(GL_TRIANGLE_STRIP)
-    glVertex3f(-1.,0.,0.)
-    glVertex3f(1.,0.,0.)
-    glVertex3f(-1.,-1.,0.)
-    glVertex3f(1.,-1.,0.)
-    glEnd()
-    
-    glBindBuffer(GL_ARRAY_BUFFER,vbo)
-    glUseProgram(shaderProgram)
-    glDrawArrays(GL_TRIANGLES,0,vertices.size)
+    glDrawArrays(GL_TRIANGLES,0,int(vertices.size/2))
     glutSwapBuffers()
 
 def wampwamp(*x):
@@ -617,27 +659,31 @@ if __name__=="__main__":
     glutSpecialFunc(turning)
     glutKeyboardFunc(movin)
 
-    vbo = glGenBuffers(1)
-    glBindBuffer(GL_ARRAY_BUFFER,vbo)
+    vbos = glGenBuffers(2)
+    glBindBuffer(GL_ARRAY_BUFFER,vbos[0])
 
     vertexSource = R"""
     #version 150
     
     in vec2 position;
+    in vec3 color;
+    out vec3 vcolor;
 
     void main()
     {
         gl_Position = vec4(position.x,position.y,0.,1.);
+        vcolor = color;
     }"""
     
     fragmentSource = R"""
     #version 150
 
+    in vec3 vcolor;
     out vec4 outColor;
 
     void main()
     {
-        outColor = vec4(0.5,.25,0.,1.);
+        outColor = vec4(vcolor.r,vcolor.g,vcolor.b,1.);
     }"""
 
     vertexShader = glCreateShader(GL_VERTEX_SHADER)
@@ -656,25 +702,10 @@ if __name__=="__main__":
     posAttrib = glGetAttribLocation(shaderProgram,"position")
     glVertexAttribPointer(posAttrib,2,GL_FLOAT,GL_FALSE,0,None)
     glEnableVertexAttribArray(posAttrib)
+
+    glBindBuffer(GL_ARRAY_BUFFER,vbos[1])
+    colAttrib = glGetAttribLocation(shaderProgram,"color")
+    glVertexAttribPointer(colAttrib,3,GL_FLOAT,GL_FALSE,0,None)
+    glEnableVertexAttribArray(colAttrib)
     
-    vbo2 = glGenBuffers(1)
-    glBindBuffer(GL_ARRAY_BUFFER,vbo2)
-
-    fragmentSource2 = R"""
-    #version 150
-
-    out vec4 outColor;
-
-    void main()
-    {
-        outColor = vec4(0.,1.,0.,1.);
-    }"""
-    fragmentShader2 = glCreateShader(GL_FRAGMENT_SHADER)
-    glShaderSource(fragmentShader2,fragmentSource2)
-    glCompileShader(fragmentShader2)
-
-    shaderProgram2 = glCreateProgram()
-    glAttachShader(shaderProgram2,fragmentShader2)
-    glLinkProgram(shaderProgram2)
-
     glutMainLoop()
