@@ -1,14 +1,26 @@
-from OpenGL.GLUT import *
+import sys
+import os
+if len(sys.argv)>1:
+	if sys.argv[1]=="-w":
+		import shutil
+		from OpenGL import __path__ as path
+		os.chdir(path[0])
+		os.mkdir("DLLS")
+		os.chdir("DLLS")
+		shutil.copyfile(os.path.dirname(__file__)+"\\freeglut64.vc14.dll",os.getcwd()+"\\freeglut64.vc14.dll")
+		print("installed dll")
+		sys.exit()
+
 from OpenGL.GL import *
+from OpenGL.GLUT import *
 import numpy as np
 import sympy as sym
 import scipy.integrate
 from numpy import sqrt
-import sys
-import os
-import shelve
+import pickle
 from functools import partial
 
+os.chdir(os.path.dirname(__file__))
 settings = {"width": 1067, "height": 800, "r": 40, "fov": 1, "wallh": .4, "turningincrement": np.pi/16, "movingincrement": .05, "tbound": 7}
 pos = [[0,np.array([0.,0.]).T]]
 eyes = [np.array([0,1]).T]
@@ -305,7 +317,7 @@ def render():
     glBufferData(GL_ARRAY_BUFFER,vertices,GL_STREAM_DRAW)
     glBindBuffer(GL_ARRAY_BUFFER,vbos[1])
     glBufferData(GL_ARRAY_BUFFER,colors,GL_STREAM_DRAW)
-    glClear(GL_COLOR_BUFFER_BIT,GL_DEPTH_BUFFER_BIT)
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
     
     glDrawArrays(GL_TRIANGLES,0,int(vertices.size/2))
     glutSwapBuffers()
@@ -344,13 +356,13 @@ def textpatches():
     return patches, patchdatas
 
 def writepatches(path,patchdatas):
-    shelf = shelve.open(path)
-    shelf["patchdatas"] = patchdatas
+    shelf = open(path,"wb")
+    pickle.dump(patchdatas,shelf)
     shelf.close()
 
 def loadpatches(path):
-    shelf = shelve.open(path)
-    patchdatas = shelf["patchdatas"]
+    shelf = open(path,"rb")
+    patchdatas = pickle.load(shelf)
     shelf.close()
     patches = []
     for p in patchdatas:
@@ -653,7 +665,7 @@ if __name__=="__main__":
     glutInit()
     glutInitDisplayMode(GLUT_DEPTH|GLUT_DOUBLE|GLUT_RGBA)
     glutInitWindowSize(settings["width"],settings["height"])
-    glutCreateWindow("surfexplV")
+    glutCreateWindow(b"surfexplV")
     glutDisplayFunc(render)
     glutIdleFunc(render)
     glutSpecialFunc(turning)
