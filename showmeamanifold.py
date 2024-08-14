@@ -1,16 +1,8 @@
 import sys
 import os
-if len(sys.argv)>1:
-	if sys.argv[1]=="-w":
-		import shutil
-		from OpenGL import __path__ as path
-		os.chdir(path[0])
-		os.mkdir("DLLS")
-		os.chdir("DLLS")
-		shutil.copyfile(os.path.dirname(__file__)+"\\freeglut64.vc14.dll",os.getcwd()+"\\freeglut64.vc14.dll")
-		print("installed dll")
-		sys.exit()
-
+if os.name=="nt":
+	os.chdir(os.path.dirname(__file__)+"\\DLLS")
+	os.add_dll_directory(os.getcwd())
 from OpenGL.GL import *
 from OpenGL.GLUT import *
 import numpy as np
