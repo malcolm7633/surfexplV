@@ -11,12 +11,14 @@ import scipy.integrate
 from numpy import sqrt
 import pickle
 from functools import partial
+from copy import deepcopy
 
-os.chdir(os.path.dirname(__file__))
+os.chdir(os.path.dirname('/home/malcolm/Programming/surfex/showmeamanifold.py'))#__file__))
 settings = {"width": 1067, "height": 800, "r": 40, "fov": 1, "wallh": .4, "turningincrement": np.pi/16, "movingincrement": .05, "tbound": 7}
 pos = [[0,np.array([0.,0.]).T]]
 eyes = [np.array([0,1]).T]
 perpv = [np.array([1,0]).T]
+statobjects=[]
 
 x1, x2, a, b = sym.symbols("x1 x2 a b")
 
@@ -45,7 +47,7 @@ class patch:
                 self.cocs.append(wampwamp)
                 self.cobs.append(wampwamp)
             else:
-                cregcheckbool = sym.lambdify([x1,x2],j[0],'numpy')
+                cregcheckbool = sym.lambdify([x1,x2],sym.sympify(j[0]),'numpy')
                 ejoeii = (sym.sympify(j[1]),sym.sympify(j[2]))
                 ejoeiimap = sym.lambdify([x1,x2],sym.Matrix(ejoeii).T,'numpy')
                 cob = sym.lambdify([x1,x2],sym.Matrix(2,2,lambda k,l: sym.diff(ejoeii[k],x[l])),'numpy')
@@ -103,12 +105,22 @@ def whatmelook():
             psimin.append([*pos[p],vec])
         inmyself = True
         ranintosometingelse = False
+        fwall = 0
         integrator = scipy.integrate.LSODA(fun=patches[psimin[0][0]].model, t0=0, y0=[*psimin[0][1],*psimin[0][2]],t_bound=settings["tbound"],max_step=.05,jac=patches[psimin[0][0]].npJac)
         while len(psimin) > 0 and integrator.status == "running":
             integrator.step()
             pin = psimin[0][0]
             if patches[pin].regionchecks[pin]((integrator.y[0],integrator.y[1]))==-1:
                 psimin.pop(0)
+                interp = integrator.dense_output()
+                def dense(t):
+                    return patches[pin].regionchecks[pin](interp(t))
+                try:
+                    nwall = scipy.optimize.bisect(dense,interp.t_min,interp.t_max,xtol=1e-7)
+                except ValueError:
+                    nwall = interp.t_max
+                if nwall > fwall:
+                    fwall = nwall
                 if len(psimin)>0:
                     integrator = scipy.integrate.LSODA(fun=patches[psimin[0][0]].model, t0=integrator.t_old, y0=[*psimin[0][1],*psimin[0][2]],t_bound=settings["tbound"],max_step=.05,jac=patches[psimin[0][0]].npJac)
                 continue
@@ -118,32 +130,21 @@ def whatmelook():
                     if patches[pin].regionchecks[p]((integrator.y[0],integrator.y[1])) == 1:
                         psimin.append([p,patches[pin].cocs[p]((integrator.y[0],integrator.y[1]))[0],patches[pin].cobs[p]((integrator.y[0],integrator.y[1]),np.array([integrator.y[2],integrator.y[3]]).T)])
             if inmyself:
+                inmyself = False # Due to 'screening' effects on boundaries, things are close if they look close in ANY patch while they're only far if they're far in ALL patches they overlap on. False is the blank for any close to change
                 for po in pos:
                     for p in psimin:
                         if p[0] == po[0]:
-                            if patches[po[0]].gp(p[1]-po[1],p[1]-po[1],po[1]) > 0.1**2:
-                                inmyself = False
-                                break
-                    if not inmyself:
+                            inmyself = patches[po[0]].gp(p[1]-po[1],p[1]-po[1],po[1]) < 0.1**2
+                            break
+                    if inmyself:
                         break
             elif not ranintosometingelse:
-                for po in pos:
-                    for p in psimin:
-                        if p[0] == po[0]:
-                            if patches[po[0]].gp(p[1]-po[1],p[1]-po[1],po[1]) < 0.1**2:
-                                if not psimin[0][0] == p[0]:
-                                    interp = integrator.dense_output()
-                                    y0 = interp(interp.t_min)
-                                    integrator = scipy.integrate.LSODA(fun=patches[p[0]].model,t0=interp.t_min,y0=[*patches[psimin[0][0]].cocs[p[0]]((y0[0],y0[1]))[0],*patches[psimin[0][0]].cobs[p[0]]((y0[0],y0[1]),np.array([y0[2],y0[3]]).T)],t_bound=settings["tbound"],first_step=.05,jac=patches[p[0]].npJac)
-                                    integrator.step()
-                                interp = integrator.dense_output()
-                                def dense(t):
-                                    return patches[po[0]].gp(interp(t)[0:2]-po[1],interp(t)[0:2]-po[1],po[1]) - 0.1**2
-                                calcs.append((scipy.optimize.bisect(dense,interp.t_min,interp.t_max,xtol=1e-7),2))
-                                ranintosometingelse = True
-                                break
+                for statobject in statobjects:
+                    ranintosometingelse, calcs = colisioncheck(statobject,psimin,3,integrator,calcs)
                     if ranintosometingelse:
                         break
+                if not ranintosometingelse:
+                    ranintosometingelse, calcs = colisioncheck(pos,psimin,2,integrator,calcs)
 
         if not integrator.status == "running":
             if ranintosometingelse:
@@ -151,13 +152,10 @@ def whatmelook():
             else:
                 calcs.append((0,0))
         else:
-            interp = integrator.dense_output()
-            def dense(t):
-                return patches[pin].regionchecks[pin](interp(t))
             if ranintosometingelse:
-                calcs = calcs[:-1]+[(scipy.optimize.bisect(dense,interp.t_min,interp.t_max,xtol=1e-7),1),calcs[-1]]
+                calcs = calcs[:-1]+[(fwall,1),calcs[-1]]
             else:
-                calcs.append((scipy.optimize.bisect(dense,interp.t_min,interp.t_max,xtol=1e-7),1))
+                calcs.append((fwall,1))
     return calcs
 def turning(key,x,y):
     if key == GLUT_KEY_RIGHT:
@@ -187,6 +185,9 @@ def turning(key,x,y):
          
             perpv[i] = cperpv
             eyes[i] = ceyes
+
+    elif key == GLUT_KEY_DOWN:
+        statobjects.append(deepcopy(pos))
 
 def movin(key,x,y):
     while True:
@@ -267,10 +268,10 @@ def movin(key,x,y):
     perpv.append(tempperpv)
     for p in range(patchnum):
         if not p == pos[0][0]:
-            if patches[pos[0][0]].regionchecks[p]((integrator.y[0],integrator.y[1])) == 1:
-                pos.append([p,patches[pos[0][0]].cocs[p]((integrator.y[0],integrator.y[1]))[0]])
-                eyes.append(patches[pos[0][0]].cobs[p]((integrator.y[0],integrator.y[1]),eyes[0]))
-                perpv.append(patches[pos[0][0]].cobs[p]((integrator.y[0],integrator.y[1]),perpv[0]))
+            if patches[pos[0][0]].regionchecks[p]((pos[0][1][0],pos[0][1][1])) == 1:
+                pos.append([p,patches[pos[0][0]].cocs[p]((pos[0][1][0],pos[0][1][1]))[0]])
+                eyes.append(patches[pos[0][0]].cobs[p]((pos[0][1][0],pos[0][1][1]),eyes[0]))
+                perpv.append(patches[pos[0][0]].cobs[p]((pos[0][1][0],pos[0][1][1]),perpv[0]))
 
     for i in range(len(pos)):
         cperpv = perpv[i]
@@ -284,6 +285,7 @@ def movin(key,x,y):
         eyes[i] = ceyes
 
 def render():
+    print(pos)
     calcs = whatmelook()
     vertices = np.array([])
     colors = np.array([])
@@ -299,10 +301,15 @@ def render():
             j = settings["wallh"]/settings["fov"]/calcs[k][0]*settings["width"]/settings["height"]/coss[i]
             vertices = np.append(vertices,[xbounds[i],0,xbounds[i],-j,xbounds[i+1],0,xbounds[i+1],0,xbounds[i],-j,xbounds[i+1],-j])
             colors = np.append(colors,[1.,0.,0.]*6)
+        elif calcs[k][1] == 3:
+            i -= 1
+            j = settings["wallh"]/settings["fov"]/calcs[k][0]*settings["width"]/settings["height"]/coss[i]
+            vertices = np.append(vertices,[xbounds[i],0,xbounds[i],-j,xbounds[i+1],0,xbounds[i+1],0,xbounds[i],-j,xbounds[i+1],-j])
+            colors = np.append(colors,[0.,0.,0.]*6)
         i += 1
         k += 1
-    vertices = np.append([-1.,0.,1.,0.,-1.,-1.,1.,-1.,1.,0.,-1.,-1.],vertices)
-    colors = np.append([0.,1.,0,0,1.,0.]*3,colors)
+    vertices = np.append([-1,-1,-1,1,1,1,-1,-1,1,-1,1,1,-1.,0.,1.,0.,-1.,-1.,1.,-1.,1.,0.,-1.,-1.],vertices)
+    colors = np.append(np.append([.25,.5,1]*6,[0.,1.,0.,]*6),colors) #ground and sky
     vertices = vertices.astype(np.float32)
     colors = colors.astype(np.float32)
     glBindBuffer(GL_ARRAY_BUFFER,vbos[0])
@@ -317,6 +324,32 @@ def render():
 def wampwamp(*x):
     print("wampwamp :( this function should never be called")
     raise KeyboardInterrupt
+
+def colisioncheck(objecpos,psimin,colorid,integrator,calcs):
+    ranintosometingelse = False #this is only called when it's false so this is an ok way to deal with the scope
+    dcounter = 0
+    for p in psimin:
+        for po in objecpos:
+            if p[0] == po[0]:
+                if patches[po[0]].gp(p[1]-po[1],p[1]-po[1],po[1]) < 0.1**2:
+                    if not psimin[0][0] == p[0]:
+                        interp = integrator.dense_output()
+                        y0 = interp(interp.t_min)
+                        integrator = scipy.integrate.BDF(fun=patches[p[0]].model,t0=interp.t_min,y0=[*patches[psimin[0][0]].cocs[p[0]]((y0[0],y0[1]))[0],*patches[psimin[0][0]].cobs[p[0]]((y0[0],y0[1]),np.array([y0[2],y0[3]]).T)],t_bound=settings["tbound"],first_step=.05,jac=patches[p[0]].npJac)
+                        integrator.step()
+                    interp = integrator.dense_output()
+                    def dense(t):
+                        return patches[po[0]].gp(interp(t)[0:2]-po[1],interp(t)[0:2]-po[1],po[1]) - 0.1**2
+                    try:
+                        calcs.append((scipy.optimize.bisect(dense,interp.t_min,interp.t_max,xtol=1e-7),colorid))
+                    except ValueError:
+                        calcs.append((interp.t_max,colorid))
+                    ranintosometingelse = True
+                break
+        if ranintosometingelse:
+            break
+    
+    return ranintosometingelse, calcs
 
 def callFalse(*x):
     return False

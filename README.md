@@ -2,4 +2,6 @@ Lets you see a 2d Riemannian manifold as if you were an ant in it. Input functio
 
 Running with no arguments launches the gui. The -i flag runs it in the console instead. Running with a file as the argument launches the file if it exists and runs it in console mode and saves it to the file if it doesn't exist.
 
+Move with WASD, look around with left and right arrow keys, and place objects with down arrow key.
+
 Requires Py-OpenGL, NumPy, SymPy, SciPy, PyQt5
